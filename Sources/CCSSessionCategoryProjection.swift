@@ -72,7 +72,18 @@ actor CCSCategoryProjectionClient {
 
     typealias DataLoader = @Sendable (URL) async throws -> Data
 
-    private static let endpoint = URL(string: "http://127.0.0.1:4319/api/snapshot")!
+    /// Matches `DEFAULT_SIDEBAR_PORT` in the CCS sidebar server, which fixes the port so cmux has a
+    /// stable origin to point at. An operator running `ccs sidebar serve --port N` overrides both.
+    static let defaultPort = 8787
+    /// Resolved from the environment so a test can assert the address without reaching the network,
+    /// which is how a wrong port previously shipped past an entirely injected-loader test suite.
+    static func resolveEndpoint(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> URL {
+        let port = environment["CCS_SIDEBAR_PORT"].flatMap(Int.init) ?? defaultPort
+        return URL(string: "http://127.0.0.1:\(port)/api/snapshot")!
+    }
+    private static let endpoint: URL = resolveEndpoint()
     private static let scopes = ["active", "completed", "archived"]
     private static let cacheLifetime: TimeInterval = 2.5
 

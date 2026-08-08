@@ -63,4 +63,33 @@ struct CCSCategoryProjectionTests {
             try CCSCategoryProjectionDecoder().decode(data)
         }
     }
+
+    /// The CCS sidebar server fixes its port at 8787. Pointing anywhere else makes every fetch fail
+    /// and renders the whole feature inert, which no injected-loader test would ever notice.
+    @Test
+    func defaultsToThePortTheSidebarServerBindsTo() {
+        let endpoint = CCSCategoryProjectionClient.resolveEndpoint(environment: [:])
+
+        #expect(endpoint.port == 8787)
+        #expect(endpoint.host == "127.0.0.1")
+        #expect(endpoint.path == "/api/snapshot")
+    }
+
+    @Test
+    func honoursAnOperatorSuppliedPort() {
+        let endpoint = CCSCategoryProjectionClient.resolveEndpoint(
+            environment: ["CCS_SIDEBAR_PORT": "9911"]
+        )
+
+        #expect(endpoint.port == 9911)
+    }
+
+    @Test
+    func fallsBackToTheDefaultWhenTheSuppliedPortIsNotANumber() {
+        let endpoint = CCSCategoryProjectionClient.resolveEndpoint(
+            environment: ["CCS_SIDEBAR_PORT": "not-a-port"]
+        )
+
+        #expect(endpoint.port == 8787)
+    }
 }
