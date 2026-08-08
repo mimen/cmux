@@ -567,6 +567,9 @@ private struct SessionRow: View, Equatable {
                 .foregroundColor(.primary.opacity(0.92))
                 .lineLimit(1)
                 .truncationMode(.tail)
+            if let category = SessionCategoryRenderData.make(from: entry.ccsCategoryMetadata) {
+                SessionCategoryIndicator(data: category)
+            }
             Spacer(minLength: 8)
             Text(relativeTime(entry.modified))
                 .cmuxFont(size: 12, monospacedDigit: true)
@@ -637,6 +640,9 @@ private struct SessionRow: View, Equatable {
         var lines: [String] = [entry.displayTitle]
         if let cwd = entry.cwdLabel {
             lines.append(cwd)
+        }
+        if let category = SessionCategoryRenderData.make(from: entry.ccsCategoryMetadata) {
+            lines.append(category.helpText)
         }
         lines.append(absoluteTime(entry.modified))
         return lines.joined(separator: "\n")
@@ -757,6 +763,9 @@ private struct SessionTranscriptPreviewView: View {
                     Text(cwd)
                         .cmuxFont(size: 11)
                         .foregroundColor(.secondary)
+                }
+                if let category = SessionCategoryRenderData.make(from: entry.ccsCategoryMetadata) {
+                    SessionCategoryIndicator(data: category)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -2521,6 +2530,9 @@ private struct PopoverRow: View, Equatable {
                 .foregroundColor(.primary.opacity(0.92))
                 .lineLimit(1)
                 .truncationMode(.tail)
+            if let category = SessionCategoryRenderData.make(from: entry.ccsCategoryMetadata) {
+                SessionCategoryIndicator(data: category)
+            }
             Spacer(minLength: 8)
             modifiedText
         }
@@ -2534,10 +2546,18 @@ private struct PopoverRow: View, Equatable {
         .onDrag {
             sessionDragItemProvider(for: entry)
         }
-        .help(entry.cwdLabel ?? entry.displayTitle)
+        .help(popoverHelpText)
         .contextMenu {
             sessionRowMenuItems(entry: entry, onResume: { _ in onActivate() })
         }
+    }
+
+    private var popoverHelpText: String {
+        var lines = [entry.cwdLabel ?? entry.displayTitle]
+        if let category = SessionCategoryRenderData.make(from: entry.ccsCategoryMetadata) {
+            lines.append(category.helpText)
+        }
+        return lines.joined(separator: "\n")
     }
 }
 

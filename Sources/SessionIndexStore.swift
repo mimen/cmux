@@ -201,6 +201,7 @@ struct DirectorySnapshot: Sendable {
 @MainActor
 final class SessionIndexStore: ObservableObject {
     private let snapshotLoader: SessionIndexSnapshotLoader
+    private let categoryDecorator: CCSSessionCategoryDecorator
 
     @Published private(set) var entries: [SessionEntry] = [] {
         didSet {
@@ -267,8 +268,12 @@ final class SessionIndexStore: ObservableObject {
     private var cachedSectionsRevision: UInt64?
     private var cachedSections: [IndexSection] = []
 
-    init(snapshotLoader: SessionIndexSnapshotLoader = SessionIndexSnapshotLoader()) {
+    init(
+        snapshotLoader: SessionIndexSnapshotLoader = SessionIndexSnapshotLoader(),
+        categoryDecorator: CCSSessionCategoryDecorator = CCSSessionCategoryDecorator()
+    ) {
         self.snapshotLoader = snapshotLoader
+        self.categoryDecorator = categoryDecorator
         self.agentOrder = Self.loadAgentOrder()
         self.directoryOrder = Self.loadDirectoryOrder()
         let storedGrouping = UserDefaults.standard.string(forKey: Self.groupingKey)
@@ -540,10 +545,13 @@ final class SessionIndexStore: ObservableObject {
         directorySnapshotGeneration += 1
         invalidateDirectorySnapshots()
         let snapshotLoader = self.snapshotLoader
+        let categoryDecorator = self.categoryDecorator
         loadTask = Task { @MainActor [weak self] in
             let scanned = await snapshotLoader.load()
+            guard !Task.isCancelled else { return }
+            let decorated = await categoryDecorator.decorate(scanned)
             guard let self, !Task.isCancelled else { return }
-            self.entries = scanned
+            self.entries = decorated
             self.isLoading = false
             self.backfillAgentOrderFromEntries()
             self.backfillDirectoryOrderFromEntries()
@@ -607,11 +615,16 @@ final class SessionIndexStore: ObservableObject {
         if Task.isCancelled {
             return DirectorySnapshot(cwd: key, entries: [], errors: [])
         }
-        let snapshot = await SessionIndexEntryProjection().directorySnapshot(
+        let projected = await SessionIndexEntryProjection().directorySnapshot(
             cwd: key,
             entries: merged,
             noFolderScope: noFolderScope,
             errors: bag.snapshot()
+        )
+        let snapshot = DirectorySnapshot(
+            cwd: projected.cwd,
+            entries: await categoryDecorator.decorate(projected.entries),
+            errors: projected.errors
         )
         // Only cache this result if no `reload()` raced in while the
         // build was running. Otherwise the caller gets a fresh snapshot
@@ -1197,7 +1210,10 @@ final class SessionIndexStore: ObservableObject {
                 limit: limit
             )
         }
-        return SearchOutcome(entries: entries, errors: bag.snapshot())
+        return SearchOutcome(
+            entries: await categoryDecorator.decorate(entries),
+            errors: bag.snapshot()
+        )
     }
 
     nonisolated private static func loadAgents(

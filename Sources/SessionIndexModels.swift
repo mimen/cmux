@@ -264,6 +264,33 @@ struct SessionEntry: Identifiable, Hashable, Sendable {
     let modified: Date
     let fileURL: URL?
     let specifics: AgentSpecifics
+    let ccsCategoryMetadata: CCSSessionCategoryMetadata
+
+    init(
+        id: String,
+        agent: SessionAgent,
+        sessionId: String,
+        title: String,
+        cwd: String?,
+        gitBranch: String?,
+        pullRequest: PullRequestLink?,
+        modified: Date,
+        fileURL: URL?,
+        specifics: AgentSpecifics,
+        ccsCategoryMetadata: CCSSessionCategoryMetadata = .absent
+    ) {
+        self.id = id
+        self.agent = agent
+        self.sessionId = sessionId
+        self.title = title
+        self.cwd = cwd
+        self.gitBranch = gitBranch
+        self.pullRequest = pullRequest
+        self.modified = modified
+        self.fileURL = fileURL
+        self.specifics = specifics
+        self.ccsCategoryMetadata = ccsCategoryMetadata
+    }
 
     var resumeWorkingDirectory: String? {
         guard let cwd, !cwd.isEmpty else { return nil }
@@ -293,7 +320,25 @@ struct SessionEntry: Identifiable, Hashable, Sendable {
                 model: model,
                 permissionMode: permissionMode,
                 configDirectoryForResume: configDirectory
-            )
+            ),
+            ccsCategoryMetadata: ccsCategoryMetadata
+        )
+    }
+
+    func withCCSCategoryMetadata(_ metadata: CCSSessionCategoryMetadata) -> SessionEntry {
+        guard ccsCategoryMetadata != metadata else { return self }
+        return SessionEntry(
+            id: id,
+            agent: agent,
+            sessionId: sessionId,
+            title: title,
+            cwd: cwd,
+            gitBranch: gitBranch,
+            pullRequest: pullRequest,
+            modified: modified,
+            fileURL: fileURL,
+            specifics: specifics,
+            ccsCategoryMetadata: metadata
         )
     }
 
