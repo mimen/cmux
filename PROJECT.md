@@ -20,14 +20,14 @@ recorded. That inventory omitted the Rust `cmux-tui` multiplexer entirely, which
 has its own crate workspace, CI, and npm, PyPI, and crates release trains, and no
 build relationship to the macOS app.
 
-| Component | Path | What it is |
-|---|---|---|
-| macOS desktop app | `Sources/`, `CLI/`, `Packages/macOS/`, `cmux.xcodeproj` | The native Swift/AppKit terminal, its `cmux` CLI, socket API, in-app browser, and sidebar host. The component the fleet depends on, via upstream. |
-| `cmux-tui` | `cmux-tui/crates/` | Rust tmux-style multiplexer. Ships as `npx cmux` / `uvx cmux`, independent of the app. Its own Cargo workspace. |
-| SDK bindings | `cmux-tui/bindings/` | Five language bindings, own `cmux-sdk-v*` tag namespace and runbook. A separate release train of `cmux-tui`. |
-| iOS client | `ios/`, `Packages/iOS/` | Not assessed. Delegated exploration did not return; recorded as such rather than guessed at. |
-| web and cloud services | `web/`, `workers/presence`, `services/iroh-relay-minter` | Not assessed, same reason. This is where the repo's genuinely irreversible operations live. |
-| auxiliary subprojects | `vault/`, `daemon/remote`, `cmux-browser/`, `agent-chat/`, `webviews/`, `Native/` | Assessed. Decomposes further into two standalone shipped products, a runtime sidecar, two build inputs, and inert reference trees, which is most of the gap between three and nine. |
+| Component | Path | What it is | Surfaces |
+|---|---|---|---|
+| macOS desktop app | `Sources/`, `CLI/`, `Packages/macOS/`, `cmux.xcodeproj` | The native Swift/AppKit terminal, its `cmux` CLI, socket API, in-app browser, and sidebar host. The component the fleet depends on, via upstream. | desktop, cli-tui, api |
+| `cmux-tui` | `cmux-tui/crates/` | Rust tmux-style multiplexer. Ships as `npx cmux` / `uvx cmux`, independent of the app. Its own Cargo workspace. | cli-tui |
+| SDK bindings | `cmux-tui/bindings/` | Five language bindings, own `cmux-sdk-v*` tag namespace and runbook. A separate release train of `cmux-tui`. | library |
+| iOS client | `ios/`, `Packages/iOS/` | Not assessed. Delegated exploration did not return; recorded as such rather than guessed at. | mobile |
+| web and cloud services | `web/`, `workers/presence`, `services/iroh-relay-minter` | Not assessed, same reason. This is where the repo's genuinely irreversible operations live. | web, api, backend-data |
+| auxiliary subprojects | `vault/`, `daemon/remote`, `cmux-browser/`, `agent-chat/`, `webviews/`, `Native/` | Assessed. Decomposes further into two standalone shipped products, a runtime sidecar, two build inputs, and inert reference trees, which is most of the gap between three and nine. | cli-tui, resident, api, web, desktop, library |
 
 ## How they relate
 
