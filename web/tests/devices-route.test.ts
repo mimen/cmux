@@ -108,6 +108,35 @@ beforeEach(async () => {
 });
 
 describe("device registry route", () => {
+  test("stops reading a chunked register body once it passes 16KiB", async () => {
+    const chunk = 1024;
+    const cap = 16 * 1024;
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += chunk;
+        if (pulled > cap + chunk * 4) return new Promise(() => {});
+        controller.enqueue(new Uint8Array(chunk));
+      },
+    });
+    const response = await Promise.race([
+      POST(
+        new Request("https://cmux.test/api/devices", {
+          method: "POST",
+          headers: authHeaders(),
+          body,
+          duplex: "half",
+        }),
+      ),
+      new Promise<Response>((_, reject) => {
+        setTimeout(() => reject(new Error(`still reading after ${pulled} bytes`)), 1000);
+      }),
+    ]);
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: "invalid_request" });
+    expect(pulled).toBeLessThanOrEqual(cap + chunk * 2);
+  });
+
   dbTest("blocks registration while account deletion is in progress", async () => {
     if (!sql) throw new Error("test database not initialized");
 
