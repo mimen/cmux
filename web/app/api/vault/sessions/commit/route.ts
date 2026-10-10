@@ -134,16 +134,8 @@ async function handlePost(request: Request, userId: string, span: Span): Promise
       results.push(result);
       continue;
     }
-    await copyObject(result.uploadObjectKey, result.objectKey);
-    let finalized;
-    try {
-      finalized = await finalizeStagedCommit(db, userId, result, config.maxUserBytes);
-    } catch (error) {
-      await deleteObject(result.objectKey).catch(() => undefined);
-      throw error;
-    }
+    const finalized = await finalizeStagedCommit(db, userId, result, config.maxUserBytes);
     if (finalized.status !== "committed") {
-      await deleteObject(result.objectKey).catch(() => undefined);
       results.push(finalized);
       continue;
     }
@@ -228,6 +220,9 @@ async function finalizeStagedCommit(
       return itemResult(pending.item, "error", "quota_exceeded");
     }
 
+    await copyObject(pending.uploadObjectKey, pending.objectKey);
+    // Expired-grant GC checks for committed snapshots before deleting this shared key.
+    // A failed transaction may have released its lock, so cleanup cannot run here.
     const sessionId = await commitVaultSnapshotRows(
       lockedDb,
       userId,
