@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
+import { setTimeout } from "node:timers/promises";
 import { cloudDb } from "../db/client";
 import { vaultSnapshots, vaultUploadGrants } from "../db/schema";
 
@@ -18,9 +19,17 @@ const headObject = mock(async (...args: unknown[]) => {
   headedKeys.push(key);
   return { contentLength: objectContentLength };
 });
-const copyObject = mock(async () => undefined);
-const deleteObject = mock(async () => {
+const storedObjects = new Set<string>();
+let beforeDelete: ((key: string) => Promise<void>) | null = null;
+const copyObject = mock(async (...args: unknown[]) => {
+  const [, destination] = args as [string, string];
+  storedObjects.add(destination);
+});
+const deleteObject = mock(async (...args: unknown[]) => {
+  const [key] = args as [string];
   if (deleteFailure) throw deleteFailure;
+  await beforeDelete?.(key);
+  storedObjects.delete(key);
 });
 const getUser = mock(async () => stackUser());
 
@@ -59,6 +68,8 @@ beforeEach(async () => {
   process.env.CMUX_VAULT_MAX_USER_BYTES = "1000000";
   objectContentLength = 456;
   deleteFailure = null;
+  beforeDelete = null;
+  storedObjects.clear();
   headedKeys.length = 0;
   headObject.mockClear();
   copyObject.mockClear();
@@ -171,7 +182,57 @@ describe("Vault commit route", () => {
     expect(snapshots).toHaveLength(1);
   });
 
-  dbTest("deletes a copied final object when the database commit rolls back", async () => {
+  dbTest("a failed commit cannot delete a concurrent successful backup", async () => {
+    const db = cloudDb();
+    const objectKey = realBuildObjectKey(userId, "codex", "session-1", sha256);
+    await insertGrant(objectKey, 456);
+    await db.execute(sql`
+      alter table vault_snapshots
+      add constraint vault_snapshots_force_failure check (size_bytes <> 999)
+    `);
+    const deletionStarted = Promise.withResolvers<void>();
+    const releaseDeletion = Promise.withResolvers<void>();
+    beforeDelete = async (key) => {
+      if (key !== objectKey) return;
+      deletionStarted.resolve();
+      await releaseDeletion.promise;
+    };
+
+    const failedCommit = POST(commitRequest({ compressedSizeBytes: 456 }));
+    let successfulCommit: Promise<Response> | undefined;
+    try {
+      await Promise.race([deletionStarted.promise, failedCommit]);
+      successfulCommit = POST(commitRequest({ compressedSizeBytes: 456, sizeBytes: 1000 }));
+      let finished = false;
+      void successfulCommit.then(() => { finished = true; });
+      const deadline = Date.now() + 5000;
+      while (!finished) {
+        const waiting = await db.execute(sql`
+          select 1 from pg_stat_activity
+          where datname = current_database() and wait_event = 'advisory'
+        `);
+        if (waiting.length > 0) break;
+        if (Date.now() >= deadline) throw new Error("Concurrent commit neither finished nor waited for the lock");
+        await setTimeout(10);
+      }
+      releaseDeletion.resolve();
+
+      expect((await failedCommit).status).toBe(500);
+      const response = await successfulCommit;
+      expect(response.status).toBe(200);
+      expect((await response.json()).items[0].status).toBe("committed");
+      const snapshots = await db.select().from(vaultSnapshots)
+        .where(eq(vaultSnapshots.objectKey, objectKey));
+      expect(snapshots).toHaveLength(1);
+      expect(storedObjects.has(snapshots[0].objectKey)).toBe(true);
+    } finally {
+      releaseDeletion.resolve();
+      await Promise.allSettled([failedCommit, successfulCommit]);
+      await db.execute(sql`alter table vault_snapshots drop constraint if exists vault_snapshots_force_failure`);
+    }
+  }, 10000);
+
+  dbTest("retains the copied object and grant for GC when the database commit rolls back", async () => {
     const db = cloudDb();
     const objectKey = realBuildObjectKey(userId, "codex", "session-1", sha256);
     await insertGrant(objectKey, 456);
@@ -185,7 +246,8 @@ describe("Vault commit route", () => {
 
       expect(response.status).toBe(500);
       expect(copyObject).toHaveBeenCalledWith(`${objectKey}.upload`, objectKey);
-      expect(deleteObject).toHaveBeenCalledWith(objectKey);
+      expect(deleteObject).not.toHaveBeenCalledWith(objectKey);
+      expect(storedObjects.has(objectKey)).toBe(true);
       const grants = await db
         .select({ id: vaultUploadGrants.id })
         .from(vaultUploadGrants)
@@ -219,7 +281,7 @@ async function insertGrant(
     });
 }
 
-function commitRequest(input: { readonly compressedSizeBytes: number }): Request {
+function commitRequest(input: { readonly compressedSizeBytes: number; readonly sizeBytes?: number }): Request {
   return new Request("https://cmux.test/api/vault/sessions/commit", {
     method: "POST",
     headers: {
@@ -234,7 +296,7 @@ function commitRequest(input: { readonly compressedSizeBytes: number }): Request
         relPath: "sessions/session-1.jsonl.zst",
         cwd: "/workspace",
         sha256,
-        sizeBytes: 999,
+        sizeBytes: input.sizeBytes ?? 999,
         compressedSizeBytes: input.compressedSizeBytes,
       }],
     }),
