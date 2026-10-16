@@ -125,7 +125,6 @@ describe("device registry route", () => {
           method: "POST",
           headers: authHeaders(),
           body,
-          duplex: "half",
         }),
       ),
       new Promise<Response>((_, reject) => {
