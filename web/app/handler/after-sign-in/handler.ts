@@ -349,7 +349,15 @@ export function makeAfterSignInHandler(dependencies: AfterSignInHandlerDependenc
 
     const afterAuth = request.nextUrl.searchParams.get("after_auth_return_to");
     if (afterAuth && afterAuth.startsWith("/") && !afterAuth.startsWith("//")) {
-      return NextResponse.redirect(new URL(afterAuth, request.url));
+      // WHATWG parses "/\evil.com" as https://evil.com. A "/" prefix is not a same-origin check.
+      let afterAuthURL: URL | null = null;
+      try {
+        const parsed = new URL(afterAuth, request.nextUrl.origin);
+        if (parsed.origin === request.nextUrl.origin) afterAuthURL = parsed;
+      } catch {
+        afterAuthURL = null;
+      }
+      if (afterAuthURL) return NextResponse.redirect(afterAuthURL);
     }
 
     if (refreshToken && accessCookie) {
