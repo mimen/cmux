@@ -171,6 +171,29 @@ describe("after sign-in native handoff", () => {
     expect(afterSignInTarget.searchParams.has("after_auth_return_to")).toBe(false);
   });
 
+  test("keeps a same-origin after_auth_return_to path", async () => {
+    const response = await GET(
+      new NextRequest(
+        `https://cmux.test/handler/after-sign-in?after_auth_return_to=${encodeURIComponent("/pricing")}`,
+      ),
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("https://cmux.test/pricing");
+  });
+
+  test("rejects a slash-backslash after_auth_return_to that parses as another origin", async () => {
+    const response = await GET(
+      new NextRequest(
+        `https://cmux.test/handler/after-sign-in?after_auth_return_to=${encodeURIComponent("/\\evil.com")}`,
+      ),
+    );
+
+    const location = response.headers.get("location");
+    expect(location ?? "").not.toContain("evil.com");
+    if (location) expect(new URL(location).origin).toBe("https://cmux.test");
+  });
+
   test("omits account switching when there is no native return target to preserve", async () => {
     const response = await GET(
       new NextRequest("https://cmux.test/handler/after-sign-in", {
