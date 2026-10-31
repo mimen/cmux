@@ -523,6 +523,10 @@ describe("device registry route", () => {
       "[::1]",
       "::ffff:127.0.0.1",
       "::ffff:7f00:1",
+      // Uncompressed mapped form. `::` compression is not required for this to be
+      // ::ffff:127.0.0.1, which connects to 127.0.0.1.
+      "0:0:0:0:0:ffff:127.0.0.1",
+      "[0:0:0:0:0:ffff:127.0.0.1]",
     ]) {
       expect(hostIsLoopback(host)).toBe(true);
     }
@@ -532,6 +536,7 @@ describe("device registry route", () => {
       "192.168.1.50",
       "10.0.0.5",
       "8.8.8.8",
+      "0:0:0:0:0:ffff:8.8.8.8",
       "my-mac.tailnet.ts.net",
       "example.com",
       "fd7a:115c:a1e0::1",
