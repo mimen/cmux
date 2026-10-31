@@ -143,7 +143,9 @@ function parseIPv6Bytes(host: string): number[] | null {
   const fixedTail = [...tailGroupBytes, ...tailBytes];
   const total = headBytes.length + fixedTail.length;
   if (doubleColon < 0) {
-    return total === 16 ? headBytes : null;
+    // headBytes omits a trailing dotted IPv4 quad, so an uncompressed mapped
+    // address is 12 bytes and never matches ::ffff:127.0.0.1.
+    return total === 16 ? [...headBytes, ...fixedTail] : null;
   }
   if (total > 16) return null;
   const zeros = new Array(16 - total).fill(0);
