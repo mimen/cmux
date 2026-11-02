@@ -379,6 +379,22 @@ describe("apns route policy", () => {
       ),
     ).resolves.toEqual({ ok: true, value: { title: "agent" } });
   });
+
+  test("reports a body stream that fails mid-read as invalid input", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"title":'));
+        controller.error(new Error("client aborted"));
+      },
+    });
+
+    await expect(
+      readBoundedJsonObject(
+        new Request("https://example.test", { method: "POST", body }),
+        64,
+      ),
+    ).resolves.toEqual({ ok: false, error: "invalid_body" });
+  });
 });
 
 describe("apns jwt", () => {

@@ -62,7 +62,7 @@ export type PushPayloadResult =
 
 export type JsonObjectResult =
   | { readonly ok: true; readonly value: Record<string, unknown> }
-  | { readonly ok: false; readonly error: "invalid_json" | "request_too_large" };
+  | { readonly ok: false; readonly error: "invalid_json" | "invalid_body" | "request_too_large" };
 
 const DEV_TAGGED_BUNDLE_ID = /^dev\.cmux\.ios\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 // Every TestFlight lane (beta AND internal) uses the production APNs
@@ -199,7 +199,7 @@ export async function readBoundedJsonObject(
 async function readBoundedText(
   request: Request,
   maxBytes: number,
-): Promise<{ readonly ok: true; readonly value: string } | { readonly ok: false; readonly error: "request_too_large" }> {
+): Promise<{ readonly ok: true; readonly value: string } | { readonly ok: false; readonly error: "invalid_body" | "request_too_large" }> {
   if (!request.body) {
     return { ok: true, value: "" };
   }
@@ -208,15 +208,19 @@ async function readBoundedText(
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    totalBytes += value.byteLength;
-    if (totalBytes > maxBytes) {
-      await reader.cancel();
-      return { ok: false, error: "request_too_large" };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        return { ok: false, error: "request_too_large" };
+      }
+      chunks.push(value);
     }
-    chunks.push(value);
+  } catch {
+    return { ok: false, error: "invalid_body" };
   }
 
   const body = new Uint8Array(totalBytes);
