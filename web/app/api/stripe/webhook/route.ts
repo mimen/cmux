@@ -143,7 +143,9 @@ async function processStripeEvent(
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
-      const result = await dependencies.applySubscriptionUpdate(event.data.object);
+      // Stripe redelivers out of order; an old snapshot would overwrite a newer status.
+      const subscription = await dependencies.stripe().subscriptions.retrieve(event.data.object.id);
+      const result = await dependencies.applySubscriptionUpdate(subscription);
       return "skipped" in result
         ? { skipped: "subscription_unmapped" }
         : { processed: event.type };
