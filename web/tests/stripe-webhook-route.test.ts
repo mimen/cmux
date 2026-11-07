@@ -26,7 +26,8 @@ const retrieveSession = mock(async () => ({
   subscription: { id: "sub_1" },
   customer: { id: "cus_1" },
 }));
-const retrieveSubscription = mock(async () => ({
+let retrievedSubscription: unknown = null;
+const retrieveSubscription = mock(async () => retrievedSubscription ?? ({
   id: "sub_1",
   customer: "cus_1",
   status: "active",
@@ -111,6 +112,7 @@ describe("Stripe billing webhook route", () => {
     applySubscriptionUpdate.mockClear();
     retrieveSession.mockClear();
     retrieveSubscription.mockClear();
+    retrievedSubscription = null;
   });
 
   test("rejects invalid Stripe signatures", async () => {
@@ -188,11 +190,42 @@ describe("Stripe billing webhook route", () => {
       },
     };
 
+    retrievedSubscription = (currentEvent.data as { object: unknown }).object;
+
+    const response = await POST(webhookRequest());
+
+    expect(response.status).toBe(200);
+    expect(retrieveSubscription).toHaveBeenCalledWith("sub_1");
+    expect(applySubscriptionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "sub_1", status: "canceled" }),
+    );
+  });
+
+  test("applies the current subscription when a stale update is redelivered", async () => {
+    currentEvent = {
+      id: "evt_stale",
+      type: "customer.subscription.updated",
+      data: {
+        object: {
+          id: "sub_1",
+          customer: "cus_1",
+          status: "active",
+          metadata: { stackUserId: "user_1", app: "cmux" },
+        },
+      },
+    };
+    retrievedSubscription = {
+      id: "sub_1",
+      customer: "cus_1",
+      status: "canceled",
+      metadata: { stackUserId: "user_1", app: "cmux" },
+    };
+
     const response = await POST(webhookRequest());
 
     expect(response.status).toBe(200);
     expect(applySubscriptionUpdate).toHaveBeenCalledWith(
-      (currentEvent.data as { object: unknown }).object,
+      expect.objectContaining({ id: "sub_1", status: "canceled" }),
     );
   });
 
