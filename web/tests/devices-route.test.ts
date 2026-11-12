@@ -527,6 +527,10 @@ describe("device registry route", () => {
       // ::ffff:127.0.0.1, which connects to 127.0.0.1.
       "0:0:0:0:0:ffff:127.0.0.1",
       "[0:0:0:0:0:ffff:127.0.0.1]",
+      // IPv4-compatible ::a.b.c.d. The dotted quad's colon is the second colon
+      // of `::`, so these are the same address as ::7f00:1.
+      "::127.0.0.1",
+      "0::127.0.0.1",
     ]) {
       expect(hostIsLoopback(host)).toBe(true);
     }
@@ -537,6 +541,7 @@ describe("device registry route", () => {
       "10.0.0.5",
       "8.8.8.8",
       "0:0:0:0:0:ffff:8.8.8.8",
+      "::8.8.8.8",
       "my-mac.tailnet.ts.net",
       "example.com",
       "fd7a:115c:a1e0::1",

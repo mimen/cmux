@@ -104,7 +104,10 @@ function parseIPv6Bytes(host: string): number[] | null {
       tailBytes.push(v);
     }
     // Drop the dotted quad including its leading colon, leaving e.g. `::ffff`.
+    // `::127.0.0.1` uses that colon as half of `::`, so put the compression back.
+    const hadCompression = work.includes("::");
     work = work.slice(0, lastColon);
+    if (hadCompression && !work.includes("::")) work += ":";
   }
 
   const doubleColon = work.indexOf("::");
