@@ -531,6 +531,12 @@ describe("device registry route", () => {
       // of `::`, so these are the same address as ::7f00:1.
       "::127.0.0.1",
       "0::127.0.0.1",
+      // inet_aton keeps the low 32 bits. 2^32 + 127.0.0.1 and 2^32 + 1 dial
+      // 127.0.0.1 and 0.0.0.1; rejecting above 0xffffffff left both reachable.
+      "0x17f000001",
+      "6425673729",
+      "0x100000001",
+      "18446744073709551617",
     ]) {
       expect(hostIsLoopback(host)).toBe(true);
     }
@@ -542,6 +548,9 @@ describe("device registry route", () => {
       "8.8.8.8",
       "0:0:0:0:0:ffff:8.8.8.8",
       "::8.8.8.8",
+      // 2^64-1 wraps to 255.255.255.255, not loopback.
+      "0xffffffffffffffff",
+      "127.16777216",
       "my-mac.tailnet.ts.net",
       "example.com",
       "fd7a:115c:a1e0::1",

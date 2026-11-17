@@ -46,40 +46,42 @@ export function hostIsLoopback(rawHost: string): boolean {
  * is not an IPv4 literal in any of those forms. Mirrors `inet_aton` so a
  * name-looking numeric host classifies exactly as it dials.
  */
+function parseNumericPart(part: string): bigint | null {
+  // parseInt stops being exact past 2^53, and inet_aton still wraps those.
+  if (/^0[xX][0-9a-fA-F]+$/.test(part)) return BigInt(part);
+  if (/^0[0-7]+$/.test(part)) return BigInt(`0o${part.slice(1)}`);
+  if (/^[0-9]+$/.test(part)) return BigInt(part);
+  return null;
+}
+
 function parseIPv4FirstOctet(host: string): number | null {
   const parts = host.split(".");
   if (parts.length === 0 || parts.length > 4) return null;
-  const values: number[] = [];
+  const values: bigint[] = [];
   for (const part of parts) {
     if (part.length === 0) return null;
-    let value: number;
-    if (/^0[xX][0-9a-fA-F]+$/.test(part)) {
-      value = parseInt(part, 16);
-    } else if (/^0[0-7]+$/.test(part)) {
-      value = parseInt(part, 8);
-    } else if (/^[0-9]+$/.test(part)) {
-      value = parseInt(part, 10);
-    } else {
-      return null;
-    }
-    if (!Number.isFinite(value)) return null;
+    const value = parseNumericPart(part);
+    if (value === null) return null;
     values.push(value);
   }
   // The final part is a big-endian remainder filling the low bytes; all
   // leading parts must be single octets. The first octet is `values[0]` when
   // there is more than one part, else the high byte of the 32-bit value.
+  // A single component wider than 32 bits keeps the low 32 (`0x17f000001`
+  // dials 127.0.0.1). A multi-part component past its width is not an address.
+  const low32 = BigInt(0xffffffff);
+  const byte = BigInt(0xff);
   if (values.length === 1) {
-    const n = values[0];
-    if (n < 0 || n > 0xffffffff) return null;
-    return (n >>> 24) & 0xff;
+    const n = values[0] & low32;
+    return Number((n >> BigInt(24)) & byte);
   }
   for (let i = 0; i < values.length - 1; i++) {
-    if (values[i] < 0 || values[i] > 0xff) return null;
+    if (values[i] > byte) return null;
   }
   const last = values[values.length - 1];
-  const maxLast = Math.pow(256, 4 - (values.length - 1)) - 1;
-  if (last < 0 || last > maxLast) return null;
-  return values[0] & 0xff;
+  const maxLast = (BigInt(1) << (BigInt(8) * BigInt(4 - (values.length - 1)))) - BigInt(1);
+  if (last > maxLast) return null;
+  return Number(values[0] & byte);
 }
 
 /**
