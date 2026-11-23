@@ -147,19 +147,30 @@ function stackHeaders(env: AuthEnv, accessToken: string): Record<string, string>
   };
 }
 
-async function fetchStackUser(env: AuthEnv, accessToken: string): Promise<AuthedUser | null> {
+/** Stack being down or rate limiting says nothing about the token, so these
+ * statuses must not land in the negative cache. */
+function isTransientStackStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+/** The verified user, "rejected" when Stack refused the token, or null when
+ * Stack could not answer. */
+async function fetchStackUser(
+  env: AuthEnv,
+  accessToken: string,
+): Promise<AuthedUser | "rejected" | null> {
   const apiUrl = (env.STACK_API_URL ?? "https://api.stack-auth.com").replace(/\/$/, "");
   const headers = stackHeaders(env, accessToken);
 
   const meResponse = await fetch(`${apiUrl}/api/v1/users/me`, { headers });
-  if (!meResponse.ok) return null;
+  if (!meResponse.ok) return isTransientStackStatus(meResponse.status) ? null : "rejected";
   const me = (await meResponse.json()) as {
     id?: unknown;
     selected_team_id?: unknown;
     selected_team?: { id?: unknown } | null;
   };
   const userId = typeof me.id === "string" && me.id ? me.id : null;
-  if (!userId) return null;
+  if (!userId) return "rejected";
   const selectedTeamId =
     typeof me.selected_team_id === "string" && me.selected_team_id
       ? me.selected_team_id
@@ -170,7 +181,7 @@ async function fetchStackUser(env: AuthEnv, accessToken: string): Promise<Authed
   // Membership list, equivalent to the web side's `user.listTeams()`. A
   // failure here fails closed (no cross-team access on a partial view).
   const teamsResponse = await fetch(`${apiUrl}/api/v1/teams?user_id=me`, { headers });
-  if (!teamsResponse.ok) return null;
+  if (!teamsResponse.ok) return isTransientStackStatus(teamsResponse.status) ? null : "rejected";
   const teams = (await teamsResponse.json()) as { items?: unknown };
   const teamIds = Array.isArray(teams.items)
     ? [
@@ -205,13 +216,14 @@ export async function verifyRequest(request: Request, env: AuthEnv): Promise<Aut
   authCache.delete(cacheKey);
 
   const user = await fetchStackUser(env, token);
+  if (user === null) return null;
 
   if (authCache.size >= AUTH_CACHE_MAX_ENTRIES) {
     // Drop the oldest insertion; Map preserves insertion order.
     const oldest = authCache.keys().next().value;
     if (oldest !== undefined) authCache.delete(oldest);
   }
-  if (!user) {
+  if (user === "rejected") {
     // Negative cache: never past the token's own expiry (an expired-token
     // hash should fall through to the cheap expiry short-circuit next time).
     const negativeDeadline =
