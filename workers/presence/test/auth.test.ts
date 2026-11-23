@@ -127,4 +127,27 @@ describe("verifyRequest negative cache", () => {
       globalThis.fetch = realFetch;
     }
   });
-})
+
+  it.each([503, 429])("retries Stack after a transient %i instead of caching it as a rejection", async (status) => {
+    const { verifyRequest } = await import("../src/auth");
+    const realFetch = globalThis.fetch;
+    const token = "opaque-valid-token-" + Math.random().toString(36).slice(2);
+    let stackDown = true;
+    globalThis.fetch = (async (input: string) => {
+      if (stackDown) return new Response("unavailable", { status });
+      const path = new URL(input).pathname;
+      return Response.json(path.endsWith("/users/me") ? { id: "user-1" } : { items: [] });
+    }) as unknown as typeof fetch;
+    try {
+      const make = () =>
+        new Request("https://presence.test/v1/presence/heartbeat", {
+          headers: { authorization: `Bearer ${token}` },
+        });
+      expect(await verifyRequest(make(), env)).toBeNull();
+      stackDown = false;
+      expect((await verifyRequest(make(), env))?.id).toBe("user-1");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+});
